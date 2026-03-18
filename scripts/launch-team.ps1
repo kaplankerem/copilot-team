@@ -111,7 +111,9 @@ Write-Host ''
 copilot --model $model --allow-all-tools $pathFlags --additional-mcp-config `$mcpJson -i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
     } else {
-        # Sub-agent launcher: experimental mode for autopilot polling
+        # Sub-agent launcher: watcher loop that launches copilot on-demand per task
+        $inboxFile  = Join-Path $sessionDir "inbox\$agent.json"
+        $outboxFile = Join-Path $sessionDir "outbox\$agent.json"
         @"
 `$host.UI.RawUI.WindowTitle = '$title [$model]'
 Write-Host ''
@@ -119,9 +121,78 @@ Write-Host '  $title' -ForegroundColor Cyan
 Write-Host '  Model: $model' -ForegroundColor DarkGray
 Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
 Write-Host ''
+
+`$inboxFile  = '$inboxFile'
+`$outboxFile = '$outboxFile'
 `$promptFile = '$promptFile'
-`$prompt = Get-Content `$promptFile -Raw
-copilot --model $model --experimental --allow-all-tools $pathFlags --no-ask-user -i `$prompt
+`$rolePrompt = Get-Content `$promptFile -Raw
+
+Write-Host '  Watching inbox for tasks...' -ForegroundColor DarkGray
+Write-Host ''
+
+while (`$true) {
+    try {
+        `$raw = Get-Content `$inboxFile -Raw -ErrorAction SilentlyContinue
+        if (`$raw -and `$raw.Trim() -ne '{}' -and `$raw.Trim() -ne '') {
+            `$data = `$raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+
+            if (`$data.command -eq 'stop') {
+                Write-Host '  [STOP] Received stop command.' -ForegroundColor Red
+                '{"from":"$agent","status":"stopped"}' | Set-Content `$outboxFile -Encoding UTF8
+                '{}' | Set-Content `$inboxFile -Encoding UTF8
+            }
+            elseif (`$data.command -eq 'cancel') {
+                Write-Host '  [CANCEL] Task cancelled.' -ForegroundColor Yellow
+                '{"from":"$agent","status":"cancelled"}' | Set-Content `$outboxFile -Encoding UTF8
+                '{}' | Set-Content `$inboxFile -Encoding UTF8
+            }
+            elseif (`$data.task) {
+                Write-Host ''
+                Write-Host '  ============================================' -ForegroundColor Green
+                Write-Host "  TASK RECEIVED at `$(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Green
+                Write-Host '  ============================================' -ForegroundColor Green
+                Write-Host ''
+
+                # Build full prompt: role + task + output instructions
+                `$taskPrompt = `$rolePrompt + @"
+
+## YOUR CURRENT TASK
+``(`$data.task)
+
+## CONTEXT
+``(`$data.context)
+
+## OUTPUT INSTRUCTIONS
+When you have completed the task, write your results as JSON to this file:
+``(`$outboxFile)
+
+Use this exact command:
+``````powershell
+Set-Content -Path '``(`$outboxFile)' -Value '<your JSON here>' -Encoding UTF8
+``````
+
+The JSON must follow the format specified in your role prompt above.
+After writing your results, you are DONE — do not continue or poll for more tasks.
+"@
+                `$taskFile = Join-Path '$sessionDir' "active_$agent.txt"
+                `$taskPrompt | Set-Content `$taskFile -Encoding UTF8
+
+                # Clear inbox before launching (so we don't re-trigger)
+                '{}' | Set-Content `$inboxFile -Encoding UTF8
+
+                # Launch copilot with the task
+                copilot --model $model --allow-all-tools $pathFlags --no-ask-user -i `$taskPrompt
+
+                Write-Host ''
+                Write-Host '  Task session ended. Watching for next task...' -ForegroundColor DarkGray
+                Write-Host ''
+            }
+        }
+    } catch {
+        Write-Host "  Error: `$_" -ForegroundColor Red
+    }
+    Start-Sleep -Seconds 3
+}
 "@ | Set-Content $launcherFile -Encoding UTF8
     }
 }
