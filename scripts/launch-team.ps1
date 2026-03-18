@@ -164,26 +164,7 @@ while (`$true) {
                 Write-Host ''
 
                 # Build full prompt: role + task + output instructions
-                `$taskPrompt = `$rolePrompt + @"
-
-## YOUR CURRENT TASK
-``(`$data.task)
-
-## CONTEXT
-``(`$data.context)
-
-## OUTPUT INSTRUCTIONS
-When you have completed the task, write your results as JSON to this file:
-``(`$outboxFile)
-
-Use this exact command:
-``````powershell
-Set-Content -Path '``(`$outboxFile)' -Value '<your JSON here>' -Encoding UTF8
-``````
-
-The JSON must follow the format specified in your role prompt above.
-After writing your results, you are DONE — do not continue or poll for more tasks.
-"@
+                `$taskPrompt = `$rolePrompt + "`n`n## YOUR CURRENT TASK`n" + `$data.task + "`n`n## CONTEXT`n" + `$data.context + "`n`n## OUTPUT INSTRUCTIONS`nWhen you have completed the task, write your results as JSON to this file:`n" + `$outboxFile + "`n`nUse Set-Content to write JSON to that path. The JSON must follow the format specified in your role prompt above.`nAfter writing your results, you are DONE — do not continue or poll for more tasks."
                 `$taskFile = Join-Path '$sessionDir' "active_$agent.txt"
                 `$taskPrompt | Set-Content `$taskFile -Encoding UTF8
 
