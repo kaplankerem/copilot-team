@@ -83,7 +83,7 @@ Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
 Write-Host ''
 `$promptFile = '$promptFile'
 `$prompt = Get-Content `$promptFile -Raw
-copilot --model $model --allow-all-tools $pathFlags $($askUserFlag)-i `$prompt
+copilot --model $model --experimental --allow-all-tools $pathFlags $($askUserFlag)-i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
 }
 
