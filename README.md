@@ -48,8 +48,8 @@ Models are configurable in `config.json`.
 ## Installation
 
 ```powershell
-git clone https://github.com/kaplankerem/KK-Orchestrator.git
-cd KK-Orchestrator
+git clone https://github.com/kaplankerem/copilot-team.git
+cd copilot-team
 .\install.ps1
 ```
 
@@ -67,7 +67,7 @@ team
 ## Uninstallation
 
 ```powershell
-cd KK-Orchestrator
+cd copilot-team
 .\uninstall.ps1
 ```
 
