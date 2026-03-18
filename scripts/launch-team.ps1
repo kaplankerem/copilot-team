@@ -91,11 +91,13 @@ foreach ($agent in $agents) {
     # Orchestrator uses MCP server for delegation (no --experimental to prevent background tasks)
     # Sub-agents use --experimental for autopilot polling
     $experimentalFlag = if ($agent -eq "orchestrator") { "" } else { "--experimental " }
-    $mcpFlag = if ($agent -eq "orchestrator") { "--additional-mcp-config `"$mcpConfigFile`" " } else { "" }
 
     # Write small launcher script
     $launcherFile = Join-Path $sessionDir "launch_$agent.ps1"
-    @"
+
+    if ($agent -eq "orchestrator") {
+        # Orchestrator launcher: reads MCP config JSON inline at runtime
+        @"
 `$host.UI.RawUI.WindowTitle = '$title [$model]'
 Write-Host ''
 Write-Host '  $title' -ForegroundColor Cyan
@@ -104,8 +106,23 @@ Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
 Write-Host ''
 `$promptFile = '$promptFile'
 `$prompt = Get-Content `$promptFile -Raw
-copilot --model $model $($experimentalFlag)--allow-all-tools $pathFlags $($mcpFlag)$($askUserFlag)-i `$prompt
+`$mcpJson = (Get-Content '$mcpConfigFile' -Raw) -replace '\r?\n', ' '
+copilot --model $model --allow-all-tools $pathFlags --additional-mcp-config `$mcpJson -i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
+    } else {
+        # Sub-agent launcher: experimental mode for autopilot polling
+        @"
+`$host.UI.RawUI.WindowTitle = '$title [$model]'
+Write-Host ''
+Write-Host '  $title' -ForegroundColor Cyan
+Write-Host '  Model: $model' -ForegroundColor DarkGray
+Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
+Write-Host ''
+`$promptFile = '$promptFile'
+`$prompt = Get-Content `$promptFile -Raw
+copilot --model $model --experimental --allow-all-tools $pathFlags --no-ask-user -i `$prompt
+"@ | Set-Content $launcherFile -Encoding UTF8
+    }
 }
 
 # --- Build Windows Terminal command via .cmd file (avoids PS escaping issues) ---
