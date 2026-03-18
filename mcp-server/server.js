@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 
 const SESSION_DIR = process.env.TEAM_SESSION_DIR;
 const CONFIG_FILE = process.env.TEAM_CONFIG_FILE;
@@ -15,6 +15,21 @@ if (!SESSION_DIR || !CONFIG_FILE || !PROMPTS_DIR) {
   process.exit(1);
 }
 
+// Resolve copilot's Node.js entry point (avoids shell:true + cmd.exe arg mangling)
+function resolveCopilotLoader() {
+  try {
+    const copilotPath = execSync("where copilot", { encoding: "utf8" }).trim().split("\n")[0].trim();
+    const npmDir = path.dirname(copilotPath);
+    const loaderJs = path.join(npmDir, "node_modules", "@github", "copilot", "npm-loader.js");
+    if (fs.existsSync(loaderJs)) return loaderJs;
+  } catch {}
+  // Fallback: standard npm global path
+  const fallback = path.join(process.env.APPDATA, "npm", "node_modules", "@github", "copilot", "npm-loader.js");
+  if (fs.existsSync(fallback)) return fallback;
+  throw new Error("Cannot find copilot npm-loader.js. Is copilot CLI installed globally?");
+}
+
+const COPILOT_LOADER = resolveCopilotLoader();
 const config = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
 const AGENTS = ["frontend", "backend", "pm", "qa", "devops"];
 
@@ -71,7 +86,9 @@ function launchAgent(agent, promptFile) {
     agentProcesses.delete(agent);
   }
 
+  // Use node + npm-loader.js directly (shell:true + cmd.exe mangles args on Windows)
   const args = [
+    COPILOT_LOADER,
     "--model", model,
     "--allow-all-tools",
     ...PATH_FLAGS.split(" ").filter(Boolean),
@@ -79,14 +96,27 @@ function launchAgent(agent, promptFile) {
     "-i", `Read the file at '${promptFile}' and execute ALL instructions in it. Start by reading the file now.`,
   ];
 
-  const child = spawn("copilot", args, {
-    stdio: "ignore",
-    detached: true,
-    shell: true,
+  const logFile = path.join(SESSION_DIR, `log_${agent}.txt`);
+
+  const child = spawn("node", args, {
+    stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env },
   });
 
-  child.unref();
+  // Capture stdout/stderr to log file and memory
+  const logStream = fs.createWriteStream(logFile, { flags: "w" });
+  let capturedOutput = "";
+
+  child.stdout.on("data", (data) => {
+    const text = data.toString();
+    capturedOutput += text;
+    logStream.write(text);
+  });
+  child.stderr.on("data", (data) => {
+    const text = data.toString();
+    capturedOutput += text;
+    logStream.write("[stderr] " + text);
+  });
 
   const info = {
     process: child,
@@ -94,15 +124,19 @@ function launchAgent(agent, promptFile) {
     model,
     startedAt: new Date().toISOString(),
     status: "running",
+    logFile,
+    getOutput: () => capturedOutput,
   };
 
   child.on("exit", (code) => {
     info.status = code === 0 ? "completed" : `exited (code ${code})`;
     info.endedAt = new Date().toISOString();
+    logStream.end();
   });
 
   child.on("error", (err) => {
     info.status = `error: ${err.message}`;
+    logStream.end();
   });
 
   agentProcesses.set(agent, info);
@@ -145,6 +179,9 @@ server.tool(
       outboxContent = fs.readFileSync(outboxFile, "utf8").trim();
     }
 
+    // Include recent captured output for visibility
+    const recentOutput = info?.getOutput ? info.getOutput().slice(-500) : "";
+
     if (outboxContent && outboxContent !== "{}" && outboxContent.length > 2) {
       try {
         const data = JSON.parse(outboxContent);
@@ -153,7 +190,9 @@ server.tool(
         return { content: [{ type: "text", text: `${agent} — process: ${processStatus}\nRaw output:\n${outboxContent}` }] };
       }
     }
-    return { content: [{ type: "text", text: `⏳ ${agent} — process: ${processStatus} — no results yet.` }] };
+
+    const logHint = recentOutput ? `\nRecent activity:\n${recentOutput}` : "";
+    return { content: [{ type: "text", text: `⏳ ${agent} — process: ${processStatus} — no results yet.${logHint}` }] };
   }
 );
 
