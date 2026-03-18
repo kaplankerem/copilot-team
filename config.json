@@ -1,0 +1,40 @@
+{
+  "agents": {
+    "orchestrator": {
+      "model": "claude-opus-4.6",
+      "emoji": "🧠",
+      "title": "ORCHESTRATOR",
+      "tabColor": "#6B21A8"
+    },
+    "frontend": {
+      "model": "claude-sonnet-4.6",
+      "emoji": "🎨",
+      "title": "FRONTEND",
+      "tabColor": "#2563EB"
+    },
+    "backend": {
+      "model": "gpt-5.3-codex",
+      "emoji": "⚙️",
+      "title": "BACKEND",
+      "tabColor": "#059669"
+    },
+    "pm": {
+      "model": "gpt-5.4",
+      "emoji": "📋",
+      "title": "PM",
+      "tabColor": "#D97706"
+    },
+    "qa": {
+      "model": "claude-sonnet-4.6",
+      "emoji": "🔬",
+      "title": "QA-TEST",
+      "tabColor": "#DC2626"
+    },
+    "devops": {
+      "model": "gpt-5.3-codex",
+      "emoji": "🚀",
+      "title": "DEVOPS",
+      "tabColor": "#7C3AED"
+    }
+  }
+}

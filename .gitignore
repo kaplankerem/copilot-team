@@ -1,0 +1,11 @@
+# Repo files (not user data)
+sessions/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
