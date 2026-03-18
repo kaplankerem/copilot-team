@@ -55,6 +55,22 @@ if ($choice -eq "2") {
 }
 Write-Host ""
 
+# --- Generate MCP config for orchestrator ---
+$mcpServerDir = Join-Path $baseDir "mcp-server"
+$mcpConfigFile = Join-Path $sessionDir "mcp-config.json"
+@{
+    mcpServers = @{
+        "team-orchestrator" = @{
+            type    = "stdio"
+            command = "node"
+            args    = @((Join-Path $mcpServerDir "server.js"))
+            env     = @{
+                TEAM_SESSION_DIR = $sessionDir
+            }
+        }
+    }
+} | ConvertTo-Json -Depth 5 | Set-Content $mcpConfigFile -Encoding UTF8
+
 # --- Generate per-agent launcher scripts ---
 foreach ($agent in $agents) {
     $agentConfig = $config.agents.$agent
@@ -72,6 +88,11 @@ foreach ($agent in $agents) {
     # Orchestrator keeps ask_user (needs to interact with user); workers get --no-ask-user
     $askUserFlag = if ($agent -eq "orchestrator") { "" } else { "--no-ask-user " }
 
+    # Orchestrator uses MCP server for delegation (no --experimental to prevent background tasks)
+    # Sub-agents use --experimental for autopilot polling
+    $experimentalFlag = if ($agent -eq "orchestrator") { "" } else { "--experimental " }
+    $mcpFlag = if ($agent -eq "orchestrator") { "--additional-mcp-config `"$mcpConfigFile`" " } else { "" }
+
     # Write small launcher script
     $launcherFile = Join-Path $sessionDir "launch_$agent.ps1"
     @"
@@ -83,7 +104,7 @@ Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
 Write-Host ''
 `$promptFile = '$promptFile'
 `$prompt = Get-Content `$promptFile -Raw
-copilot --model $model --experimental --allow-all-tools $pathFlags $($askUserFlag)-i `$prompt
+copilot --model $model $($experimentalFlag)--allow-all-tools $pathFlags $($mcpFlag)$($askUserFlag)-i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
 }
 
