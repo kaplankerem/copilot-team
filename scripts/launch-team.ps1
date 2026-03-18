@@ -13,6 +13,16 @@ $baseDir    = "$env:USERPROFILE\.copilot-team"
 $configFile = Join-Path $baseDir "config.json"
 $promptsDir = Join-Path $baseDir "prompts"
 
+# --- Auto-cleanup: remove sessions older than 7 days ---
+$sessionsDir = Join-Path $baseDir "sessions"
+if (Test-Path $sessionsDir) {
+    $cutoff = (Get-Date).AddDays(-7)
+    Get-ChildItem $sessionsDir -Directory | Where-Object { $_.LastWriteTime -lt $cutoff } | ForEach-Object {
+        Remove-Item $_.FullName -Recurse -Force
+        Write-Host "  Cleaned up old session: $($_.Name)" -ForegroundColor DarkGray
+    }
+}
+
 # --- Load config ---
 $config = Get-Content $configFile -Raw | ConvertFrom-Json
 
