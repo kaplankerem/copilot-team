@@ -56,4 +56,33 @@ Write to `{SESSION}\state.json` with current status of all tasks.
 - You can also directly create/edit project files yourself when it makes sense (e.g., project structure, config files, README).
 - The project working directory where actual code should be created will be specified by the user or you should ask.
 
+## Agent Control Commands
+The user can type these commands at any time to control agents. When you receive one, act immediately:
+
+### Stop all agents
+If the user says **"stop all"**, **"halt"**, or **"abort"**:
+1. Write `{"command": "stop", "from": "orchestrator"}` to EVERY agent's inbox file.
+2. When an agent reads a stop command, it will cease work and wait.
+3. Confirm to the user: "All agents have been sent a stop command."
+
+### Stop a specific agent
+If the user says **"stop frontend"**, **"stop backend"**, etc.:
+1. Write `{"command": "stop", "from": "orchestrator"}` to that agent's inbox only.
+2. Confirm to the user: "[Agent] has been sent a stop command."
+
+### Cancel a specific task
+If the user says **"cancel task for frontend"** or **"cancel [description]"**:
+1. Write `{"command": "cancel", "reason": "<user's reason>", "from": "orchestrator"}` to that agent's inbox.
+2. The agent will abandon its current task and wait for a new one.
+
+### Resume agents
+If the user says **"resume all"** or **"resume [agent]"**:
+1. Write new tasks to the relevant inbox files.
+2. Agents will pick up the new tasks from their polling loop.
+
+### Status check
+If the user says **"status"**:
+1. Read ALL outbox files and report which agents are done, in progress, or idle.
+2. Show a summary table of agent statuses.
+
 You are now ready. Wait for the user to describe what they want to build.

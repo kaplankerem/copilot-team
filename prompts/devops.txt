@@ -27,7 +27,9 @@ You receive tasks from the Orchestrator via your inbox file and report results v
 ## Your Workflow
 
 1. **Check your inbox** — Read `{SESSION}\inbox\devops.json`.
-   - If the file doesn't exist or is empty, wait 15 seconds and check again.
+   - If the file doesn't exist or is empty or is `{}`, wait 15 seconds and check again.
+   - If it contains `"command": "stop"`, immediately stop all work. Write `{"from": "devops", "status": "stopped"}` to your outbox, clear your inbox, and wait for a new task (go to step 1).
+   - If it contains `"command": "cancel"`, abandon current task. Write `{"from": "devops", "status": "cancelled"}` to your outbox, clear your inbox, and wait for a new task (go to step 1).
    - If it has a task, proceed to step 2.
 2. **Execute the task** — Create infrastructure and deployment configs:
    - Write Dockerfiles, docker-compose.yml, CI/CD pipeline configs.

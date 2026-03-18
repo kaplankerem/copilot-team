@@ -153,15 +153,29 @@ Edit files in `prompts/` to change agent behavior, expertise areas, or communica
 Each agent pane runs:
 
 ```powershell
-copilot --model <model> --allow-all-tools --allow-all-paths --no-ask-user -i "<role-prompt>"
+copilot --model <model> --allow-all-tools --add-dir "<session-dir>" --no-ask-user -i "<role-prompt>"
 ```
 
 - `-i` — starts the full interactive TUI and auto-executes the role prompt
 - `--allow-all-tools` — agents can read/write files, run shell commands, search code
-- `--allow-all-paths` — access to the shared session directory
+- `--add-dir` — scopes file access to the session directory only (not the full filesystem)
 - `--no-ask-user` — worker agents never ask questions; they communicate via files only
 
 The Orchestrator omits `--no-ask-user` since it's the agent you interact with directly.
+
+## Agent Control Commands
+
+Type these into the **Orchestrator pane** at any time:
+
+| Command | Effect |
+|---------|--------|
+| `stop all` / `halt` / `abort` | Sends stop command to all agents |
+| `stop frontend` | Stops a specific agent |
+| `cancel task for backend` | Cancels the current task for a specific agent |
+| `resume all` / `resume qa` | Assigns new tasks to resume work |
+| `status` | Shows status of all agents |
+
+Agents recognize stop/cancel commands in their inbox and will cease work, report their status to their outbox, and wait for new instructions.
 
 ## Tips
 

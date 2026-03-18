@@ -55,6 +55,9 @@ foreach ($agent in $agents) {
     # Orchestrator keeps ask_user (needs to interact with user); workers get --no-ask-user
     $askUserFlag = if ($agent -eq "orchestrator") { "" } else { "--no-ask-user " }
 
+    # Scope file access to session dir only (agents can also add project dirs at runtime)
+    $pathFlags = "--add-dir `"$sessionDir`""
+
     # Write small launcher script
     $launcherFile = Join-Path $sessionDir "launch_$agent.ps1"
     @"
@@ -66,7 +69,7 @@ Write-Host '  Session: $sessionId' -ForegroundColor DarkGray
 Write-Host ''
 `$promptFile = '$promptFile'
 `$prompt = Get-Content `$promptFile -Raw
-copilot --model $model --allow-all-tools --allow-all-paths $($askUserFlag)-i `$prompt
+copilot --model $model --allow-all-tools $pathFlags $($askUserFlag)-i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
 }
 
