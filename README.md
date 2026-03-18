@@ -2,27 +2,26 @@
 
 **Multi-agent AI team orchestration for GitHub Copilot CLI.**
 
-Launch a full software development team of AI agents with a single command. Each agent runs in its own Windows Terminal pane with a full interactive Copilot CLI TUI — streaming output, tool calls, file I/O, all visible in real time.
+Launch a full software development team of AI agents with a single command. You interact with a single **Orchestrator** TUI — it delegates to specialist agents running as background processes, each using its own AI model.
 
 ```
-┌──────────────────┬──────────────────┬──────────────────┐
-│  🧠 ORCHESTRATOR │  🎨 FRONTEND     │  ⚙️  BACKEND     │
-│  claude-opus-4.6 │  claude-sonnet   │  gpt-5.3-codex   │
-├──────────────────┼──────────────────┼──────────────────┤
-│  📋 PM           │  🔬 QA/TEST      │  🚀 DEVOPS       │
-│  gpt-5.4         │  claude-sonnet   │  gpt-5.3-codex   │
-└──────────────────┴──────────────────┴──────────────────┘
+You ──► 🧠 Orchestrator (claude-opus-4.6, interactive)
+              │
+              ├── delegate_task ──► 📋 PM (gpt-5.4)          plans & breaks down work
+              ├── delegate_task ──► 🎨 Frontend (sonnet-4.6)  UI implementation
+              ├── delegate_task ──► ⚙️  Backend (codex)       APIs & server logic
+              ├── delegate_task ──► 🔬 QA (sonnet-4.6)        tests & quality
+              └── delegate_task ──► 🚀 DevOps (codex)         CI/CD & infra
 ```
 
 ## How It Works
 
 1. Type `team` in any terminal
-2. Windows Terminal opens with **6 panes** — each a full Copilot CLI session
-3. **Orchestrator** pane is focused — type your project task there
-4. Orchestrator decomposes the task and routes subtasks to specialist agents
-5. Agents communicate via a **file-based message bus** (inbox/outbox JSON files)
-6. Every agent's work is visible live in its own TUI pane
-7. You can type directly into any pane at any time
+2. A single **Orchestrator** TUI opens — type your project task there
+3. Orchestrator sends the request to the **PM agent** for planning and task breakdown
+4. PM produces a structured plan; Orchestrator delegates each task to the right agents
+5. Agents run as **background processes** (each with its own model), write results to outbox files
+6. Orchestrator monitors agent progress and reports back to you when done
 
 ## Agents
 
@@ -39,10 +38,11 @@ Models are configurable in `config.json`.
 
 ## Prerequisites
 
-- **Windows 10/11** with [Windows Terminal](https://aka.ms/terminal)
+- **Windows 10/11**
 - **PowerShell 7+** ([Install](https://aka.ms/powershell))
-- **GitHub Copilot CLI** ([Install](https://gh.io/copilot-cli))
+- **GitHub Copilot CLI** installed globally via npm (`npm install -g @github/copilot`)
 - **GitHub CLI** authenticated (`gh auth login`)
+- **Node.js 18+**
 - A GitHub Copilot subscription with model access
 
 ## Installation
@@ -55,7 +55,8 @@ cd copilot-team
 
 The installer:
 - Copies files to `~/.copilot-team/`
-- Adds the `team` function to your PowerShell profile
+- Runs `npm install` in the MCP server directory
+- Adds the `team` and `team-clean` functions to your PowerShell profile
 - Validates all prerequisites
 
 Then open a **new terminal** and type:
@@ -77,41 +78,64 @@ cd copilot-team
 ~/.copilot-team/
   config.json               ← model + color assignments per agent
   prompts/
-    orchestrator.txt        ← role prompt for each agent
-    frontend.txt
+    orchestrator.txt        ← orchestrator role prompt
+    frontend.txt            ← agent role prompts
     backend.txt
     pm.txt
     qa.txt
     devops.txt
   scripts/
-    launch-team.ps1         ← Windows Terminal launcher
+    launch-team.ps1         ← session launcher
+  mcp-server/
+    server.js               ← MCP server (agent process manager)
+    package.json
   sessions/
     <session-id>/           ← created per session at runtime
-      inbox/                ← task assignments (JSON)
-      outbox/               ← completed results (JSON)
-      prompt_*.txt          ← injected prompts per agent
-      launch_*.ps1          ← per-agent launcher scripts
-      launch.cmd            ← Windows Terminal layout command
+      inbox/                ← (reserved for future use)
+      outbox/               ← agent results (JSON)
+      active_<agent>.txt    ← injected prompt per agent
+      log_<agent>.txt       ← agent stdout/stderr capture
+      mcp-config.json       ← generated MCP config for this session
       state.json            ← session metadata
 ```
 
 ### Communication Flow
 
 ```
-User ──► Orchestrator ──► writes to agent inboxes
-              ▲                     │
-              │                     ▼
-              └──── reads outboxes ◄── Agents complete work
+User ──► Orchestrator TUI
+              │
+              │ delegate_task (MCP tool)
+              ▼
+         MCP Server (server.js)
+              │
+              │ spawns: node npm-loader.js --model <model> --no-ask-user -i "..."
+              ▼
+         Agent Process (headless)
+              │ reads active_<agent>.txt for full instructions
+              │ executes task (writes code, runs commands, etc.)
+              ▼
+         outbox/<agent>.json  ◄── Orchestrator polls via check_agent_status
 ```
 
-1. **Orchestrator** receives the user's task in its interactive TUI
-2. Decomposes the task and writes subtasks to each agent's `inbox/*.json`
-3. Each agent **polls its inbox** using Copilot's built-in file tools
-4. Agents execute the work (create files, write code, run commands)
-5. Agents write results to their `outbox/*.json`
-6. Orchestrator monitors outboxes, synthesizes, and reports back
+1. **Orchestrator** receives user request, immediately delegates to **PM** via `delegate_task`
+2. **PM** produces a task breakdown with assignments, acceptance criteria, and dependency order
+3. **Orchestrator** reads PM's plan and calls `delegate_task` for each technical agent
+4. Each **agent** runs as a child `node` process, reads its prompt file, executes the work
+5. Agents write JSON results to their `outbox/` file
+6. **Orchestrator** polls via `check_agent_status` / `check_all_agents` and reports to you
 
-All file reads/writes happen through Copilot's own tools — visible in each pane's TUI.
+Agent processes are captured (stdout + stderr → `log_<agent>.txt`) so you can always check what happened if an agent fails.
+
+### MCP Tools
+
+The MCP server exposes 4 tools to the Orchestrator:
+
+| Tool | Description |
+|------|-------------|
+| `delegate_task` | Launch an agent process with a task + context |
+| `check_agent_status` | Check one agent's process status + results + recent output |
+| `check_all_agents` | Overview of all agents at once |
+| `send_command` | Stop or cancel a running agent |
 
 ## Customization
 
@@ -145,44 +169,52 @@ Edit files in `prompts/` to change agent behavior, expertise areas, or communica
 
 1. Add/remove entries in `config.json`
 2. Add/remove prompt files in `prompts/`
-3. Update the pane layout in `scripts/launch-team.ps1`
+3. Update the `AGENTS` array in `mcp-server/server.js`
 4. Re-run `.\install.ps1 -Force`
 
-## How Each Pane Launches
+## Session Management
 
-Each agent pane runs:
+Sessions are stored in `~/.copilot-team/sessions/`. Each run creates a new session directory.
 
 ```powershell
-copilot --model <model> --allow-all-tools --add-dir "<session-dir>" --no-ask-user -i "<role-prompt>"
+# Clean up sessions older than 7 days (also runs automatically on each `team` launch)
+team-clean
+
+# Clean up sessions older than 3 days
+team-clean -Days 3
 ```
 
-- `-i` — starts the full interactive TUI and auto-executes the role prompt
-- `--allow-all-tools` — agents can read/write files, run shell commands, search code
-- `--add-dir` — scopes file access to the session directory only (not the full filesystem)
-- `--no-ask-user` — worker agents never ask questions; they communicate via files only
+## How Agents Are Launched
 
-The Orchestrator omits `--no-ask-user` since it's the agent you interact with directly.
+Each agent runs as a headless Node.js process:
+
+```
+node <npm-loader.js> --model <model> --allow-all-tools --allow-all-paths --no-ask-user -i "Read the file at '...'"
+```
+
+- `npm-loader.js` — the Copilot CLI entry point (resolved automatically; avoids Windows cmd.exe arg mangling)
+- `--allow-all-tools` — agents can read/write files, run shell commands, search code
+- `--no-ask-user` — agents never ask questions; they write results to their outbox file
+- `-i` — non-interactive mode, starts with a one-line instruction to read the full prompt file
+
+Agent stdout/stderr is captured to `log_<agent>.txt` in the session directory for debugging.
 
 ## Agent Control Commands
 
-Type these into the **Orchestrator pane** at any time:
+Type these into the **Orchestrator** at any time:
 
 | Command | Effect |
 |---------|--------|
-| `stop all` / `halt` / `abort` | Sends stop command to all agents |
-| `stop frontend` | Stops a specific agent |
-| `cancel task for backend` | Cancels the current task for a specific agent |
-| `resume all` / `resume qa` | Assigns new tasks to resume work |
-| `status` | Shows status of all agents |
-
-Agents recognize stop/cancel commands in their inbox and will cease work, report their status to their outbox, and wait for new instructions.
+| `stop all` / `halt` / `abort` | Kills all running agent processes |
+| `stop frontend` | Kills a specific agent process |
+| `status` | Shows process status + results for all agents |
 
 ## Tips
 
-- **Focus any pane** by clicking on it to give direct instructions to that agent
-- **Scroll up** in any pane to see the full history of that agent's work
-- **Session files** persist in `~/.copilot-team/sessions/` — you can review past sessions
-- The Orchestrator sees all agent outputs and can re-assign work or request fixes
+- **Session logs** — if an agent fails, check `log_<agent>.txt` in the session directory for the full output
+- **Retry** — just re-send the same task; the orchestrator will re-launch the agent
+- **Session files** persist in `~/.copilot-team/sessions/` — review past work any time
+- **Path access** — on launch you choose between full filesystem access or session-scoped access
 
 ## License
 
