@@ -107,6 +107,7 @@ Write-Host ''
 `$promptFile = '$promptFile'
 `$prompt = Get-Content `$promptFile -Raw
 `$mcpJson = Get-Content '$mcpConfigFile' -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 10
+`$PSNativeCommandArgumentPassing = 'Standard'
 copilot --model $model --allow-all-tools $pathFlags --additional-mcp-config `$mcpJson -i `$prompt
 "@ | Set-Content $launcherFile -Encoding UTF8
     } else {
