@@ -171,8 +171,8 @@ while (`$true) {
                 # Clear inbox before launching (so we don't re-trigger)
                 '{}' | Set-Content `$inboxFile -Encoding UTF8
 
-                # Launch copilot with the task
-                copilot --model $model --allow-all-tools $pathFlags --no-ask-user -i `$taskPrompt
+                # Launch copilot with a short -i that reads the full prompt from file (avoids command line length limit)
+                copilot --model $model --allow-all-tools $pathFlags --no-ask-user -i "Read the file at '`$taskFile' and execute ALL instructions in it. Start by reading the file now."
 
                 Write-Host ''
                 Write-Host '  Task session ended. Watching for next task...' -ForegroundColor DarkGray
