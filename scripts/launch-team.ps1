@@ -37,6 +37,23 @@ foreach ($agent in $agents) {
 
 Write-Host "Session: $sessionId" -ForegroundColor Cyan
 Write-Host "Directory: $sessionDir" -ForegroundColor DarkGray
+Write-Host ""
+
+# --- Ask user for path access level ---
+Write-Host "  Path Access Mode" -ForegroundColor Yellow
+Write-Host "  [1] Session directory only (secure — agents can only access session files)"
+Write-Host "  [2] Allow all paths (full filesystem access — needed for working on existing projects)"
+Write-Host ""
+$choice = Read-Host "  Select (1 or 2)"
+
+if ($choice -eq "2") {
+    $pathFlags = "--allow-all-paths"
+    Write-Host "  -> Full filesystem access enabled" -ForegroundColor Red
+} else {
+    $pathFlags = "--add-dir `"$sessionDir`""
+    Write-Host "  -> Scoped to session directory" -ForegroundColor Green
+}
+Write-Host ""
 
 # --- Generate per-agent launcher scripts ---
 foreach ($agent in $agents) {
@@ -54,9 +71,6 @@ foreach ($agent in $agents) {
 
     # Orchestrator keeps ask_user (needs to interact with user); workers get --no-ask-user
     $askUserFlag = if ($agent -eq "orchestrator") { "" } else { "--no-ask-user " }
-
-    # Scope file access to session dir only (agents can also add project dirs at runtime)
-    $pathFlags = "--add-dir `"$sessionDir`""
 
     # Write small launcher script
     $launcherFile = Join-Path $sessionDir "launch_$agent.ps1"
